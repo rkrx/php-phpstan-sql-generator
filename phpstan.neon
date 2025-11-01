@@ -3,4 +3,4 @@ parameters:
     paths:
         - src
         - test-postgres.php
-        - bin/phpstan-sql-types
+        - bin/generate-phpstan-types-from-sql
