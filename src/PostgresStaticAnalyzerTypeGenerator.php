@@ -2,6 +2,7 @@
 
 namespace Kir\PhpstanTypesFromSql;
 
+use Kir\PhpstanTypesFromSql\Common\LangTools;
 use Kir\PhpstanTypesFromSql\Common\PHPTools;
 use Kir\PhpstanTypesFromSql\Postgres\PostgresTypeTranslationService;
 use Override;
@@ -82,9 +83,10 @@ class PostgresStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterfa
 		?string $databaseName = null,
 		?string $schemaName = null,
 		bool $asArray = true,
-		bool $full = true
+		bool $full = true,
+		bool|callable $singularizedNames = true
 	): string {
-		$tables = $this->getAllTables($databaseName, $schemaName);
+		$tables = $this->getAllTables(databaseName: $databaseName, schemaName: $schemaName);
 		
 		$blocks = [];
 		foreach($tables as $tableName => $columns) {
@@ -92,6 +94,13 @@ class PostgresStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterfa
 			foreach($columns as $column) {
 				$properties[$column->column_name] = PostgresTypeTranslationService::asPhpType($column->data_type, $column->is_nullable === 'YES');
 			}
+			
+			if($singularizedNames === true) {
+				$tableName = LangTools::singularize($tableName);
+			} elseif(is_callable($singularizedNames)) {
+				$tableName = $singularizedNames($tableName);
+			}
+			
 			$block = PHPTools::generateAnalyzerShape(
 				analyzerPrefix: 'phpstan',
 				tableName: $tableName,
@@ -127,7 +136,7 @@ class PostgresStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterfa
 	 * @param string|null $schemaName
 	 * @return array<string, TPostgresColumn[]>
 	 */
-	private function getAllTables(?string $databaseName, ?string $schemaName) {
+	private function getAllTables(?string $databaseName, ?string $schemaName): array {
 		$columns = $this->getAllColumns(databaseName: $databaseName, schemaName: $schemaName);
 		$result = [];
 		foreach($columns as $column) {

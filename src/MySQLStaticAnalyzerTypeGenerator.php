@@ -3,6 +3,7 @@
 namespace Kir\PhpstanTypesFromSql;
 
 use Generator;
+use Kir\PhpstanTypesFromSql\Common\LangTools;
 use Kir\PhpstanTypesFromSql\Common\PHPTools;
 use Override;
 use PDO;
@@ -58,9 +59,10 @@ class MySQLStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterface 
 		?string $databaseName = null,
 		?string $schemaName = null,
 		bool $asArray = true,
-		bool $full = true
+		bool $full = true,
+		bool|callable $singularizedNames = true
 	): string {
-		$typeLinesStr = $this->generatePhpStanTableDefinitions(databaseName: $databaseName, asArray: $asArray, full: $full);
+		$typeLinesStr = $this->generatePhpStanTableDefinitions(databaseName: $databaseName, asArray: $asArray, full: $full, singularizedNames: $singularizedNames);
 
 		$docBlock = PHPTools::embedLinesIntoPhpDockBlock($typeLinesStr);
 
@@ -72,15 +74,21 @@ class MySQLStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterface 
 
 		return implode("\n", $content);
 	}
-
+	
 	/**
-	 * @param null|string $databaseName
+	 * @param null|string $databaseName The database to generate types for.
 	 * @param bool $asArray If true, the type is an array, if false, an object.
 	 * @param bool $full All keys are required to be present.
+	 * @param null|bool|callable(string):string $singularizedNames If true, table names are singularized.
 	 * @return string
 	 * @throws \JsonException
 	 */
-	public function generatePhpStanTableDefinitions(?string $databaseName, bool $asArray, bool $full): string {
+	public function generatePhpStanTableDefinitions(
+		?string $databaseName,
+		bool $asArray,
+		bool $full,
+		null|bool|callable $singularizedNames
+	): string {
 		$tables = $this->getTablesAndColumns(databaseName: $databaseName);
 
 		$typeLines = [];
@@ -97,7 +105,8 @@ class MySQLStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterface 
 					typeName: $typeName,
 					columns: $columns,
 					asArray: $asArray,
-					full: $full
+					full: $full,
+					singularizedNames: $singularizedNames,
 				)
 			];
 
@@ -108,7 +117,8 @@ class MySQLStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterface 
 					typeName: $typeName,
 					columns: $columns,
 					asArray: $asArray,
-					full: $full
+					full: $full,
+					singularizedNames: $singularizedNames,
 				)
 			];
 		}
@@ -171,10 +181,24 @@ class MySQLStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterface 
 	 * @param TMySQLColumn[] $columns
 	 * @param bool $asArray If true, the type is an array, if false, an object.
 	 * @param bool $full All keys are required to be present.
+	 * @param null|bool|callable(string):string $singularizedNames If true, table names are singularized.
 	 * @return string[]
 	 * @throws \JsonException
 	 */
-	private function generateTableDefinition(string $analyzerPrefix, string $typeName, array $columns, bool $asArray, bool $full): array {
+	private function generateTableDefinition(
+		string $analyzerPrefix,
+		string $typeName,
+		array $columns,
+		bool $asArray,
+		bool $full,
+		null|bool|callable $singularizedNames
+	): array {
+		if($singularizedNames === true) {
+			$typeName = LangTools::singularize($typeName);
+		} elseif(is_callable($singularizedNames)) {
+			$typeName = $singularizedNames($typeName);
+		}
+		
 		$ro = $full ? '' : '_Partial';
 		$type = $asArray ? 'array' : 'object';
 		$typeLines = ["@$analyzerPrefix-type T{$typeName}$ro $type{"];

@@ -17,6 +17,7 @@ interface PhpstanTypeGeneratorInterface {
 	 * @param string|null $schemaName The schema to generate types for.
 	 * @param bool $asArray If true, the type is an array, if false, an object.
 	 * @param bool $full All keys are required to be present.
+	 * @param bool|callable(string):string $singularizedNames If true, table names are singularized.
 	 * @return string The generated php-file contents.
 	 */
 	public function generate(
@@ -25,6 +26,7 @@ interface PhpstanTypeGeneratorInterface {
 		?string $databaseName = null,
 		?string $schemaName = null,
 		bool $asArray = true,
-		bool $full = true
+		bool $full = true,
+		bool|callable $singularizedNames = true
 	): string;
 }
