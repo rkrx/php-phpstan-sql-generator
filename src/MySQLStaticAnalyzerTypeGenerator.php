@@ -74,7 +74,7 @@ class MySQLStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterface 
 
 		return implode("\n", $content);
 	}
-	
+
 	/**
 	 * @param null|string $databaseName The database to generate types for.
 	 * @param bool $asArray If true, the type is an array, if false, an object.
@@ -94,9 +94,17 @@ class MySQLStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterface 
 		$typeLines = [];
 
 		foreach($tables as $tableName => $columns) {
-			$typeName = strtr($tableName, ['_' => ' ']);
-			$typeName = ucwords($typeName);
-			$typeName = strtr($typeName, [' ' => '']);
+			if(is_callable($singularizedNames)) {
+				$typeName = $singularizedNames($tableName);
+			} else {
+				if($singularizedNames === true) {
+					$tableName = LangTools::singularize($tableName);
+				}
+
+				$typeName = strtr($tableName, ['_' => ' ']);
+				$typeName = ucwords($typeName);
+				$typeName = strtr($typeName, [' ' => '']);
+			}
 
 			$typeLines = [
 				...$typeLines,
@@ -155,7 +163,7 @@ class MySQLStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterface 
 			$conditions[] = 'c.TABLE_SCHEMA = DATABASE()';
 		}
 
-		$sql = sprintf('SELECT * FROM information_schema.COLUMNS c WHERE %s', implode(' AND ', $conditions));
+		$sql = sprintf('SELECT * FROM information_schema.COLUMNS c WHERE %s ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION', implode(' AND ', $conditions));
 		$stmt = $this->pdo->prepare($sql);
 		$stmt->execute($parameters);
 
@@ -193,12 +201,6 @@ class MySQLStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterface 
 		bool $full,
 		null|bool|callable $singularizedNames
 	): array {
-		if($singularizedNames === true) {
-			$typeName = LangTools::singularize($typeName);
-		} elseif(is_callable($singularizedNames)) {
-			$typeName = $singularizedNames($typeName);
-		}
-		
 		$ro = $full ? '' : '_Partial';
 		$type = $asArray ? 'array' : 'object';
 		$typeLines = ["@$analyzerPrefix-type T{$typeName}$ro $type{"];

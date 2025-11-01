@@ -169,7 +169,7 @@ class PostgresStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterfa
 			$conditions[] = 'table_schema = current_schema()';
 		}
 		
-		$stmt = $this->pdo->prepare('SELECT * FROM information_schema.columns WHERE ' . implode(' AND ', $conditions));
+		$stmt = $this->pdo->prepare(sprintf('SELECT c.* FROM information_schema.columns c WHERE %s ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION', implode(' AND ', $conditions)));
 		$stmt->execute($parameters);
 		
 		/** @var TPostgresColumn[] $result */
