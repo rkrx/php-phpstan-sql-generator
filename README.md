@@ -1,6 +1,6 @@
 # PHPStan Types From SQL
 
-Generate PHPStan (and optionally Psalm) shape types directly from your database schema. Point the generator at a MySQL or PostgreSQL database via PDO and it produces a small PHP class whose docblock contains `@phpstan-type` (and for MySQL also `@psalm-type`) definitions for every table.
+Generate PHPStan (and optionally Psalm) shape types directly from your database schema. Point the generator at a MySQL or PostgreSQL database via PDO and it produces a small PHP class whose docblock contains `@phpstan-type` (and also `@psalm-type`) definitions for every table.
 
 Works great to keep static-analysis types in sync with your DB without hand-writing shapes.
 
