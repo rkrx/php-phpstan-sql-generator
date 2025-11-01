@@ -46,8 +46,8 @@ Output
   -o, --output <path>          Output path; if not given, write to stdout
 
 Examples
-  vendor/bin/phpstan-sql-types -d "mysql:host=127.0.0.1;dbname=acme;charset=utf8mb4" -u user -p pass -n DbTypes --output generated/DbTypes.php
-  vendor/bin/phpstan-sql-types -d "pgsql:host=127.0.0.1;port=5432;dbname=acme" -u user -p pass -s public -a -n DbTypes > generated/DbTypes.php
+  vendor/bin/phpstan-sql-types -d "mysql:host=127.0.0.1;dbname=acme;charset=utf8mb4" -u user -p pass -c DbTypes -n DbTypes --output generated/DbTypes.php
+  vendor/bin/phpstan-sql-types -d "pgsql:host=127.0.0.1;port=5432;dbname=acme" -s public -u user -p pass -c DbTypes -n DbTypes > generated/DbTypes.php
 TXT;
 	if($code !== 0) {
 		fatal($help);
@@ -106,7 +106,7 @@ if ($opt === false || isset($opt['help'])) { // @phpstan-ignore-line
     usage(0);
 }
 
-$stringOrNull = static fn(string $key): ?string => array_key_exists($key, $opt) && is_string($opt[$key]) ? $opt[$key] : null;
+$stringOrNull = static fn(string $key): ?string => array_key_exists($key, $opt) && is_string($opt[$key]) ? trim($opt[$key]) : null;
 
 $dsn = $stringOrNull('d') ?? $stringOrNull('db-dsn') ?? '';
 $dbUser = $stringOrNull('u') ?? $stringOrNull('db-user') ?? '';
