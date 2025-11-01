@@ -37,11 +37,11 @@ use RuntimeException;
 class MySQLStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterface {
 	/** @var list<callable(string): bool> */
 	private array $tableFilters = [];
-	
+
 	public function __construct(
 		private readonly PDO $pdo,
 	) {}
-	
+
 	/**
 	 * @param callable(string): bool $tableFilter
 	 * @return void
@@ -50,7 +50,7 @@ class MySQLStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterface 
 	public function addFilter(callable $tableFilter): void {
 		$this->tableFilters[] = $tableFilter;
 	}
-	
+
 	#[Override]
 	public function generate(
 		string $namespace,
@@ -72,7 +72,7 @@ class MySQLStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterface 
 
 		return implode("\n", $content);
 	}
-	
+
 	/**
 	 * @param null|string $databaseName
 	 * @param bool $asArray If true, the type is an array, if false, an object.
@@ -135,13 +135,23 @@ class MySQLStaticAnalyzerTypeGenerator implements PhpstanTypeGeneratorInterface 
 	 * @return Generator<TMySQLColumn>
 	 */
 	private function getAllColumns(?string $databaseName): Generator {
-		$stmt = $this->pdo->prepare('SELECT * FROM information_schema.COLUMNS c WHERE c.TABLE_SCHEMA = :dbname');
-		$stmt->bindValue('dbname', $databaseName, PDO::PARAM_STR);
-		$stmt->execute();
-		
+		$conditions = ['1=1'];
+		$parameters = [];
+
+		if($databaseName !== null) {
+			$conditions[] = 'c.TABLE_SCHEMA = :dbname';
+			$parameters['dbname'] = $databaseName;
+		} else {
+			$conditions[] = 'c.TABLE_SCHEMA = DATABASE()';
+		}
+
+		$sql = sprintf('SELECT * FROM information_schema.COLUMNS c WHERE %s', implode(' AND ', $conditions));
+		$stmt = $this->pdo->prepare($sql);
+		$stmt->execute($parameters);
+
 		/** @var TMySQLColumn[] $result */
 		$result = $stmt->fetchAll(PDO::FETCH_CLASS);
-		
+
 		if(count($this->tableFilters)) {
 			foreach($result as $column) {
 				foreach($this->tableFilters as $filter) {
