@@ -28,7 +28,7 @@ If you want to autoload generated types under your own namespace (recommended), 
 ### MySQL Example
 - This example mirrors `test-mysql.php` but with placeholder credentials.
 
-```
+```php
 <?php
 
 use Kir\PhpstanTypesFromSql\MySQLStaticAnalyzerTypeGenerator;
@@ -64,7 +64,7 @@ Notes
 
 - This example mirrors `test-postgres.php` but with placeholder credentials.
 
-```
+```php
 <?php
 
 use Kir\PhpstanTypesFromSql\PostgresStaticAnalyzerTypeGenerator;
