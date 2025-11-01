@@ -23,9 +23,58 @@ If you want to autoload generated types under your own namespace (recommended), 
 
 ## Usage
 
+### CLI Usage
+
+- Composer exposes `vendor/bin/phpstan-sql-types` after install.
+- Generate types directly from the command line without writing any PHP glue.
+
+Parameters
+- Database connection
+    - `-d`, `--db-dsn <dsn>` Database DSN, e.g. `mysql:host=127.0.0.1;dbname=your_db;charset=utf8mb4` or `pgsql:host=127.0.0.1;port=5432;dbname=your_db`
+    - `-u`, `--db-user <user>` Database user
+    - `-p`, `--db-password <password>` Database password
+    - `-s`, `--db-schema <name>` Schema name (Postgres required unless `current_schema()` fits; optional for MySQL)
+- Analyzer generation
+    - `-a`, `--array-shapes` Use `array{...}` shapes (default)
+    - `-o`, `--object-shapes` Use `object{...}` shapes (MySQL); Postgres currently generates arrays
+    - `--psalm` Include Psalm `@psalm-type` definitions
+    - `--phpstan` Include PHPStan `@phpstan-type` definitions
+    - If neither `--psalm` nor `--phpstan` is provided, both are generated
+    - `-c`, `--class-name <name>` Generated class name (example: `DbTypes`)
+    - `-n`, `--namespace <name>` Generated namespace of the class (example: `DbTypes`)
+- Output
+    - `--output <path>` Write to a file; if omitted, writes to stdout
+
+Examples
+
+MySQL → file (object shapes, both analyzers):
+
+```
+vendor/bin/phpstan-sql-types \
+  -d "mysql:host=127.0.0.1;dbname=your_db;charset=utf8mb4" \
+  -u your_user -p your_password \
+  -c DbTypes -n DbTypes \
+  --output generated/DbTypes.php
+```
+
+PostgreSQL → stdout (array shapes, both analyzers):
+
+```
+vendor/bin/phpstan-sql-types \
+  -d "pgsql:host=127.0.0.1;port=5432;dbname=your_db" -s public \
+  -u your_user -p your_password  \
+  -c DbTypes -n DbTypes > generated/DbTypes.php
+```
+
+Notes
+- Postgres currently emits array shapes; `--object-shapes` is ignored there.
+- If only `--psalm` is requested for Postgres, the tool mirrors the PHPStan types as Psalm types for convenience.
+
+
 ### Code examples
 
-### MySQL Example
+#### MySQL Example
+
 - This example mirrors `test-mysql.php` but with placeholder credentials.
 
 ```php
