@@ -111,7 +111,8 @@ $gen->addFilter(static fn (string $table) => !in_array($table, ['migrations', 'a
 - Examples below are abbreviated from files under `generated/` in this repository.
 
 - MySQL (object shape, excerpt from `generated/ClassName.php`):
-```
+
+```php
 /**
  * @phpstan-type TSsoRegistry object{
  *     public_token: string,
@@ -142,7 +143,7 @@ class ClassName {}
 
 - PostgreSQL (array shape, excerpt from `generated/<ClassName>.php`):
 
-```
+```php
 /**
  * @phpstan-type TTokens array{
  *     persistent: bool,
