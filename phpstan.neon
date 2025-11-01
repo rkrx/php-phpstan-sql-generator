@@ -1,0 +1,6 @@
+parameters:
+    level: max
+    paths:
+        - src
+        - test-postgres.php
+        - bin/phpstan-sql-types

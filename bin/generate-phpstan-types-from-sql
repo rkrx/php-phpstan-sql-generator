@@ -1,0 +1,278 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+namespace Kir\PhpstanTypesFromSql;
+
+use PDO;
+use Throwable;
+
+// Try local vendor first (repo root), then the project's vendor when installed
+$autoload = __DIR__ . '/../vendor/autoload.php';
+if (!file_exists($autoload)) {
+    $autoload = __DIR__ . '/../../../autoload.php';
+}
+require $autoload;
+
+function err(string $msg): void {
+    fwrite(STDERR, $msg . "\n");
+}
+
+function fatal(string $msg, int $code = 1): never {
+	err($msg);
+	exit($code);
+}
+
+function usage(int $code = 0): never {
+    $help = /** @lang text */ <<<TXT
+Usage: phpstan-sql-types [options]
+
+Database connection
+  -d, --db-dsn <dsn>           The database DSN (e.g. mysql:host=...;dbname=..., pgsql:host=...;dbname=...)
+  -u, --db-user <user>         The DB user
+  -p, --db-password <password> The DB password
+  -s, --db-schema <name>       The database schema to use (optional for MySQL)
+
+Analyzer generation
+  -a, --array-shapes           Generate array{...} shapes (default)
+  -o, --object-shapes          Generate object{...} shapes
+      --psalm                  Generate Psalm definitions
+      --phpstan                Generate PHPStan definitions
+  -c, --class-name <name>      The name of the class to generate (default: DbTypes)
+  -n, --namespace <name>       The namespace to generate (default: App\Types)
+
+Output
+  -o, --output <path>          Output path; if not given, write to stdout
+
+Examples
+  vendor/bin/phpstan-sql-types -d "mysql:host=127.0.0.1;dbname=acme;charset=utf8mb4" -u user -p pass -n DbTypes --output generated/DbTypes.php
+  vendor/bin/phpstan-sql-types -d "pgsql:host=127.0.0.1;port=5432;dbname=acme" -u user -p pass -s public -a -n DbTypes > generated/DbTypes.php
+TXT;
+	if($code !== 0) {
+		fatal($help);
+	}
+	printf("%s\n", $help);
+    exit($code);
+}
+
+$cliParams = [
+	['d:', 'db-dsn:'],
+	['u:', 'db-user:'],
+	['p:', 'db-password:'],
+	['s:', 'db-schema::'],
+	['c:', 'class-name:'],
+	['n:', 'namespace:'],
+];
+
+$cliSwitches = [
+	[null, 'array-shapes'],
+	[null, 'object-shapes'],
+	[null, 'psalm'],
+	[null, 'phpstan'],
+	['h', 'help'],
+	['o', 'output'],
+];
+
+$shortValues = array_column($cliParams, 0);
+$longValues = array_column($cliParams, 1);
+
+$shortSwitches = array_filter(array_column($cliSwitches, 0));
+$longSwitches = array_column($cliSwitches, 1);
+
+// Parse CLI options
+$short = implode('', [...$shortValues, ...$shortSwitches]);
+$long = [...$longValues, ...$longSwitches];
+
+$opt = getopt($short, $long);
+
+/**
+ * @var false|array{
+ *     d?: string, db-dsn?: string,
+ *     u?: string, db-user?: string,
+ *     p?: string, db-password?: string,
+ *     s?: string, db-schema?: string,
+ *     c?: string, class-name?: string,
+ *     n?: string, namespace?: string,
+ *     a?: bool, array-shapes?: bool,
+ *     o?: bool, object-shapes?: bool,
+ *     psalm?: bool,
+ *     phpstan?: bool,
+ *     output?: bool,
+ *     h?: bool, help?: bool
+ * } $opt
+ */
+if ($opt === false || isset($opt['help'])) { // @phpstan-ignore-line
+    usage(0);
+}
+
+$stringOrNull = static fn(string $key): ?string => array_key_exists($key, $opt) && is_string($opt[$key]) ? $opt[$key] : null;
+
+$dsn = $stringOrNull('d') ?? $stringOrNull('db-dsn') ?? '';
+$dbUser = $stringOrNull('u') ?? $stringOrNull('db-user') ?? '';
+$dbPass = $stringOrNull('p') ?? $stringOrNull('db-password') ?? '';
+$schema = $stringOrNull('s') ?? $stringOrNull('db-schema');
+$asArray = isset($opt['a']) || isset($opt['array-shapes']);
+$asObject = isset($opt['o']) || isset($opt['object-shapes']);
+$wantPsalm = isset($opt['psalm']);
+$wantPhpstan = isset($opt['phpstan']);
+$className = $stringOrNull('c') ?? $stringOrNull('class-name') ?? '';
+$namespace = $stringOrNull('n') ?? $stringOrNull('namespace') ?? '';
+$outputPath = $stringOrNull('output');
+
+if ($dsn === '') {
+    err('Error: --db-dsn is required');
+    usage(1);
+}
+
+if ($className === '') {
+    err('Error: --class-name is required');
+    usage(1);
+}
+
+if ($namespace === '') {
+    err('Error: --namespace is required');
+    usage(1);
+}
+
+if ($asArray && $asObject) {
+    fatal('Error: choose only one of --array-shapes or --object-shapes', 2);
+}
+
+// Default to array shapes if neither is specified
+if (!$asArray && !$asObject) {
+    $asArray = true;
+}
+
+// Default to both analyzers if neither is specified
+if (!$wantPsalm && !$wantPhpstan) {
+    $wantPsalm = true;
+    $wantPhpstan = true;
+}
+
+// Determine driver from DSN
+$driver = strtolower(substr($dsn, 0, strpos($dsn, ':') ?: 0));
+if ($driver === '') {
+    err('Error: Invalid DSN. Expected prefix like "mysql:" or "pgsql:".');
+    exit(3);
+}
+
+// Try to extract database name from DSN (dbname=...)
+function parseDbNameFromDsn(string $dsn): ?string {
+    $parts = explode(':', $dsn, 2);
+    if (count($parts) < 2) { return null; }
+    $kv = explode(';', $parts[1]);
+    foreach ($kv as $item) {
+        [$k, $v] = array_pad(explode('=', $item, 2), 2, null);
+        if (strcasecmp((string)$k, 'dbname') === 0) {
+            return $v === null ? null : (string)$v;
+        }
+    }
+    return null;
+}
+
+$databaseName = parseDbNameFromDsn($dsn);
+
+// For MySQL we require dbname in DSN
+if ($driver === 'mysql' && ($databaseName === null || $databaseName === '')) {
+    err('Error: MySQL requires a dbname in the DSN (e.g., mysql:host=...;dbname=your_db;charset=utf8mb4)');
+    exit(4);
+}
+
+// Build PDO
+$pdoOptions = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+];
+if ($driver === 'pgsql') {
+    $pdoOptions[PDO::ATTR_ORACLE_NULLS] = PDO::NULL_NATURAL;
+}
+
+try {
+    $pdo = new PDO($dsn, $dbUser, $dbPass, $pdoOptions);
+} catch (Throwable $e) {
+    err("Error: Failed to connect using provided DSN/user/password. {$e->getMessage()}");
+    exit(5);
+}
+
+// Choose generator
+$full = true;
+
+$gen = match($driver) {
+	'mysql' => new MySQLStaticAnalyzerTypeGenerator(pdo: $pdo),
+	'pgsql', 'postgres' => new PostgresStaticAnalyzerTypeGenerator(pdo: $pdo),
+	default => fatal("Error: Unsupported DSN driver: $driver. Supported: mysql, pgsql", 1)
+};
+
+// Generate content
+$schemaName = $schema !== null && $schema !== '' ? (string)$schema : null;
+$asArrayFlag = $asArray; // For MySQL this toggles array vs object; for PG it is currently array-only
+
+$contents = $gen->generate(
+    namespace: $namespace,
+    className: $className,
+    databaseName: $databaseName,
+    schemaName: $schemaName,
+    asArray: $asArrayFlag,
+    full: $full
+);
+
+// Post-process analyzer selection
+// - If only one of --phpstan/--psalm is requested, filter accordingly.
+// - For Postgres, optionally duplicate phpstan lines to psalm if psalm requested.
+
+// Extract lines for manipulation
+$lines = explode("\n", $contents);
+$hasPsalmLines = false;
+$hasPhpstanLines = false;
+foreach ($lines as $ln) {
+    if (str_contains($ln, '@psalm-type')) { $hasPsalmLines = true; }
+    if (str_contains($ln, '@phpstan-type')) { $hasPhpstanLines = true; }
+}
+
+$outLines = [];
+foreach ($lines as $ln) {
+    $isPsalm = str_contains($ln, '@psalm-type');
+    $isPhpstan = str_contains($ln, '@phpstan-type');
+
+    if ($isPsalm) {
+        if ($wantPsalm) {
+            $outLines[] = $ln;
+        }
+        continue;
+    }
+
+    if ($isPhpstan) {
+        if ($wantPhpstan) {
+            $outLines[] = $ln;
+        }
+        if ($wantPsalm && !$hasPsalmLines) {
+            // Duplicate phpstan line as psalm when requested and original has no psalm types
+            $outLines[] = str_replace('@phpstan-type', '@psalm-type', $ln);
+        }
+        continue;
+    }
+
+    // Non-type lines are always kept
+    $outLines[] = $ln;
+}
+
+$final = implode("\n", $outLines);
+
+// Output
+if ($outputPath !== null && $outputPath !== '') {
+    $dir = dirname((string)$outputPath);
+    if (!is_dir($dir)) {
+        if (!@mkdir($dir, 0777, true) && !is_dir($dir)) {
+            err('Error: Failed to create output directory: ' . $dir);
+            exit(7);
+        }
+    }
+    if (@file_put_contents((string)$outputPath, $final) === false) {
+        err('Error: Failed to write output file: ' . $outputPath);
+        exit(8);
+    }
+} else {
+    echo $final;
+}
+
+exit(0);

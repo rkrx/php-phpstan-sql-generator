@@ -1,0 +1,10 @@
+/*
+!/bin
+!/docs
+!/src
+!/.gitignore
+!/composer.json
+!/LICENSE
+!/phpstan.neon
+!/psalm.xml
+!/README.md

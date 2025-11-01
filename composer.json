@@ -1,0 +1,33 @@
+{
+	"name": "rkr/phpstan-types-from-sql",
+	"description": "Generate phpstan shapes from sql tables",
+	"type": "library",
+	"license": "MIT",
+	"authors": [{
+		"name": "Ron Kirschler",
+		"email": "ron.kirschler@gmail.com"
+	}],
+	"require": {
+		"php": ">=8.2",
+		"ext-pdo": "*"
+	},
+	"require-dev": {
+		"phpstan/phpstan": ">= 1.10"
+	},
+	"autoload": {
+		"psr-4": {
+			"Kir\\PhpstanTypesFromSql\\": "src/"
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"Test\\": "generated/"
+		}
+	},
+	"bin": [
+		"bin/generate-phpstan-types-from-sql"
+	],
+	"scripts": {
+		"phpstan": "phpstan analyse -c phpstan.neon"
+	}
+}
